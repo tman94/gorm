@@ -331,33 +331,24 @@ func (scope *Scope) callCallbacks(funcs []*func(s *Scope)) *Scope {
 	return scope
 }
 
-func (scope *Scope) updatedAttrsWithValues(values map[string]interface{}, ignoreProtectedAttrs bool) (results map[string]interface{}, hasUpdate bool) {
-	if !scope.IndirectValue().CanAddr() {
-		return values, true
-	}
-
-	var hasExpr bool
-	for key, value := range values {
-		if field, ok := scope.FieldByName(key); ok && field.Field.IsValid() {
-			if !reflect.DeepEqual(field.Field, reflect.ValueOf(value)) {
-				if _, ok := value.(*expr); ok {
-					hasExpr = true
-				} else if !equalAsString(field.Field.Interface(), value) {
-					hasUpdate = true
-					field.Set(value)
-				}
-			}
+func (scope *Scope) updatedAttrsWithValues(values interface{}) (results map[string]interface{}, hasUpdate bool) {
+	if attrs := convertInterfaceToMap(values); len(attrs) > 0 {
+		if !scope.IndirectValue().CanAddr() {
+			return attrs, true
 		}
-	}
 
-	if hasExpr {
 		var updateMap = map[string]interface{}{}
-		for key, field := range scope.Fields() {
-			if field.IsNormal {
-				if v, ok := values[key]; ok {
-					updateMap[key] = v
-				} else {
-					updateMap[key] = field.Field.Interface()
+		for key, value := range attrs {
+			if field, ok := scope.FieldByName(key); ok && field.Field.IsValid() {
+				if !reflect.DeepEqual(field.Field, reflect.ValueOf(value)) {
+					if exp, ok := value.(*expr); ok {
+						updateMap[key] = exp
+					} else if !equalAsString(field.Field.Interface(), value) {
+						field.Set(value)
+						if field.IsNormal {
+							updateMap[key] = field.Field.Interface()
+						}
+					}
 				}
 			}
 		}
@@ -382,10 +373,10 @@ func (scope *Scope) rows() (*sql.Rows, error) {
 
 func (scope *Scope) initialize() *Scope {
 	for _, clause := range scope.Search.whereConditions {
-		scope.updatedAttrsWithValues(convertInterfaceToMap(clause["query"]), false)
+		scope.updatedAttrsWithValues(clause["query"])
 	}
-	scope.updatedAttrsWithValues(convertInterfaceToMap(scope.Search.initAttrs), false)
-	scope.updatedAttrsWithValues(convertInterfaceToMap(scope.Search.assignAttrs), false)
+	scope.updatedAttrsWithValues(scope.Search.initAttrs)
+	scope.updatedAttrsWithValues(scope.Search.assignAttrs)
 	return scope
 }
 
